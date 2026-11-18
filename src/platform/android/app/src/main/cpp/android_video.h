@@ -14,6 +14,7 @@ public:
     void setWindow(ANativeWindow* window);
     void setFrameSize(unsigned width, unsigned height);
     void renderFrame(const uint32_t* pixels);
+    void reset();
 
 private:
     bool initEGL();
@@ -21,6 +22,9 @@ private:
 
     std::mutex m_mutex;
     ANativeWindow* m_window = nullptr;
+    ANativeWindow* m_pendingWindow = nullptr;
+    bool m_windowChanged = false;
+
     EGLDisplay m_display = EGL_NO_DISPLAY;
     EGLSurface m_surface = EGL_NO_SURFACE;
     EGLContext m_context = EGL_NO_CONTEXT;

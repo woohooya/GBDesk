@@ -1,7 +1,6 @@
 #include "android_video.h"
 
 #include <android/log.h>
-#include <algorithm>
 
 #define LOGE(...) __android_log_print(ANDROID_LOG_ERROR, "GBDeskVideo", __VA_ARGS__)
 
@@ -47,20 +46,30 @@ GLuint compileShader(GLenum type, const char* src) {
 } // namespace
 
 AndroidVideo::~AndroidVideo() {
-    setWindow(nullptr);
+    reset();
 }
 
-void AndroidVideo::setWindow(ANativeWindow* window) {
+void AndroidVideo::reset() {
     std::lock_guard<std::mutex> lock(m_mutex);
     destroyEGL();
+    if (m_pendingWindow) {
+        ANativeWindow_release(m_pendingWindow);
+        m_pendingWindow = nullptr;
+    }
     if (m_window) {
         ANativeWindow_release(m_window);
         m_window = nullptr;
     }
-    if (window) {
-        m_window = window;
-        initEGL();
+    m_windowChanged = false;
+}
+
+void AndroidVideo::setWindow(ANativeWindow* window) {
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_pendingWindow) {
+        ANativeWindow_release(m_pendingWindow);
     }
+    m_pendingWindow = window;
+    m_windowChanged = true;
 }
 
 void AndroidVideo::setFrameSize(unsigned width, unsigned height) {
@@ -178,6 +187,20 @@ void AndroidVideo::destroyEGL() {
 
 void AndroidVideo::renderFrame(const uint32_t* pixels) {
     std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_windowChanged) {
+        destroyEGL();
+        if (m_window) {
+            ANativeWindow_release(m_window);
+            m_window = nullptr;
+        }
+        m_window = m_pendingWindow;
+        m_pendingWindow = nullptr;
+        m_windowChanged = false;
+        if (m_window) {
+            initEGL();
+        }
+    }
+
     if (m_display == EGL_NO_DISPLAY || m_surface == EGL_NO_SURFACE || !pixels) {
         return;
     }
@@ -197,7 +220,6 @@ void AndroidVideo::renderFrame(const uint32_t* pixels) {
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    // Preserve aspect ratio
     float targetAspect = static_cast<float>(m_frameWidth) / static_cast<float>(m_frameHeight);
     float winAspect = static_cast<float>(winW) / static_cast<float>(winH);
     int vpW = winW;

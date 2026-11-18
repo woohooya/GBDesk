@@ -10,6 +10,7 @@ extern "C" {
 #include <mgba/core/core.h>
 #include <mgba/core/directories.h>
 #include <mgba/core/serialize.h>
+#include <mgba-util/audio-buffer.h>
 #include <mgba-util/memory.h>
 #include <mgba-util/vfs.h>
 }
@@ -30,6 +31,7 @@ namespace {
 struct EmulatorInstance {
     mCore* core = nullptr;
     std::vector<uint32_t> videoBuffer;
+    std::vector<int16_t> audioScratch;
     unsigned width = 240;
     unsigned height = 160;
 
@@ -61,6 +63,19 @@ void emulationLoop() {
             if (g_emu.core) {
                 g_emu.core->setKeys(g_emu.core, g_emu.keys.load(std::memory_order_relaxed));
                 g_emu.core->runFrame(g_emu.core);
+
+                mAudioBuffer* ab = g_emu.core->getAudioBuffer(g_emu.core);
+                if (ab) {
+                    size_t avail = mAudioBufferAvailable(ab);
+                    if (avail > 0) {
+                        if (g_emu.audioScratch.size() < avail * 2) {
+                            g_emu.audioScratch.resize(avail * 2);
+                        }
+                        size_t read = mAudioBufferRead(ab, g_emu.audioScratch.data(), avail);
+                        g_emu.audio.pushSamples(g_emu.audioScratch.data(), read);
+                    }
+                }
+
                 g_emu.video.renderFrame(g_emu.videoBuffer.data());
             }
         }
@@ -78,6 +93,7 @@ void stopEmulationInternal() {
         g_emu.thread.join();
     }
     g_emu.audio.stop();
+    g_emu.video.reset();
 
     std::lock_guard<std::mutex> lock(g_emu.coreMutex);
     if (g_emu.core) {
@@ -86,6 +102,7 @@ void stopEmulationInternal() {
         g_emu.core = nullptr;
     }
     g_emu.videoBuffer.clear();
+    g_emu.audioScratch.clear();
 }
 
 } // namespace
@@ -128,11 +145,11 @@ Java_com_gbdesk_android_native_CoreBridge_nativeLoadRomFd(
     env->ReleaseStringUTFChars(jBaseName, baseName);
     env->ReleaseStringUTFChars(jSaveDir, saveDir);
 
-    if (!core->loadROM(core, vf)) {
-        vf->close(vf);
+    // Preload into memory so SAF file descriptors that do not support mmap() still work reliably.
+    if (!mCorePreloadVF(core, vf)) {
         mCoreConfigDeinit(&core->config);
         core->deinit(core);
-        LOGE("core->loadROM failed");
+        LOGE("mCorePreloadVF failed");
         return JNI_FALSE;
     }
 
@@ -141,6 +158,10 @@ Java_com_gbdesk_android_native_CoreBridge_nativeLoadRomFd(
 
     unsigned w = 0, h = 0;
     core->baseVideoSize(core, &w, &h);
+    if (w == 0 || h == 0) {
+        w = 240;
+        h = 160;
+    }
     g_emu.width = w;
     g_emu.height = h;
     g_emu.videoBuffer.assign(static_cast<size_t>(w) * h, 0);
@@ -152,7 +173,7 @@ Java_com_gbdesk_android_native_CoreBridge_nativeLoadRomFd(
     g_emu.core = core;
 
     unsigned sampleRate = core->audioSampleRate(core);
-    g_emu.audio.start(sampleRate ? static_cast<int>(sampleRate) : 32768, core->getAudioBuffer(core));
+    g_emu.audio.start(sampleRate ? static_cast<int>(sampleRate) : 32768);
     g_emu.audio.setPaused(true);
 
     g_emu.paused.store(true, std::memory_order_release);

@@ -1,20 +1,21 @@
 #include "android_audio.h"
 
-extern "C" {
-#include <mgba-util/audio-buffer.h>
-}
-
+#include <algorithm>
 #include <cstring>
+
+namespace {
+constexpr size_t MAX_RING_SAMPLES = 16384 * 2; // ~0.5s stereo at 32kHz
+}
 
 AndroidAudio::~AndroidAudio() {
     stop();
 }
 
-bool AndroidAudio::start(int sampleRate, mAudioBuffer* buffer) {
+bool AndroidAudio::start(int sampleRate) {
     stop();
     {
         std::lock_guard<std::mutex> lock(m_mutex);
-        m_buffer = buffer;
+        m_ring.clear();
         m_paused = false;
     }
 
@@ -41,7 +42,7 @@ void AndroidAudio::stop() {
         m_stream.reset();
     }
     std::lock_guard<std::mutex> lock(m_mutex);
-    m_buffer = nullptr;
+    m_ring.clear();
 }
 
 void AndroidAudio::setPaused(bool paused) {
@@ -49,20 +50,39 @@ void AndroidAudio::setPaused(bool paused) {
     m_paused = paused;
 }
 
+void AndroidAudio::pushSamples(const int16_t* samples, size_t frameCount) {
+    if (!samples || frameCount == 0) {
+        return;
+    }
+    std::lock_guard<std::mutex> lock(m_mutex);
+    size_t sampleCount = frameCount * 2;
+    if (m_ring.size() + sampleCount > MAX_RING_SAMPLES) {
+        size_t drop = (m_ring.size() + sampleCount) - MAX_RING_SAMPLES;
+        drop = std::min(drop, m_ring.size());
+        m_ring.erase(m_ring.begin(), m_ring.begin() + static_cast<std::ptrdiff_t>(drop));
+    }
+    m_ring.insert(m_ring.end(), samples, samples + sampleCount);
+}
+
 oboe::DataCallbackResult AndroidAudio::onAudioReady(
     oboe::AudioStream*,
     void* audioData,
     int32_t numFrames) {
     auto* out = static_cast<int16_t*>(audioData);
+    size_t neededSamples = static_cast<size_t>(numFrames) * 2;
     std::lock_guard<std::mutex> lock(m_mutex);
-    if (m_paused || !m_buffer) {
-        std::memset(out, 0, static_cast<size_t>(numFrames) * 2 * sizeof(int16_t));
+    if (m_paused || m_ring.empty()) {
+        std::memset(out, 0, neededSamples * sizeof(int16_t));
         return oboe::DataCallbackResult::Continue;
     }
 
-    size_t read = mAudioBufferRead(m_buffer, out, static_cast<size_t>(numFrames));
-    if (read < static_cast<size_t>(numFrames)) {
-        std::memset(out + read * 2, 0, (static_cast<size_t>(numFrames) - read) * 2 * sizeof(int16_t));
+    size_t avail = std::min(neededSamples, m_ring.size());
+    for (size_t i = 0; i < avail; ++i) {
+        out[i] = m_ring.front();
+        m_ring.pop_front();
+    }
+    if (avail < neededSamples) {
+        std::memset(out + avail, 0, (neededSamples - avail) * sizeof(int16_t));
     }
     return oboe::DataCallbackResult::Continue;
 }

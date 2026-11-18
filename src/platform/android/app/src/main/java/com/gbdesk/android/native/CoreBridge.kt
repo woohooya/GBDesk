@@ -10,6 +10,7 @@ data class SaveSlotInfo(
 
 object CoreBridge {
     init {
+        System.loadLibrary("c++_shared")
         System.loadLibrary("gbdesk_jni")
     }
 

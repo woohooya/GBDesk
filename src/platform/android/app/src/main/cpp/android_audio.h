@@ -2,19 +2,19 @@
 
 #include <oboe/Oboe.h>
 #include <cstdint>
+#include <deque>
 #include <memory>
 #include <mutex>
-
-struct mAudioBuffer;
 
 class AndroidAudio : public oboe::AudioStreamDataCallback {
 public:
     AndroidAudio() = default;
     ~AndroidAudio() override;
 
-    bool start(int sampleRate, mAudioBuffer* buffer);
+    bool start(int sampleRate);
     void stop();
     void setPaused(bool paused);
+    void pushSamples(const int16_t* samples, size_t frameCount);
 
     oboe::DataCallbackResult onAudioReady(
         oboe::AudioStream* audioStream,
@@ -24,6 +24,6 @@ public:
 private:
     std::shared_ptr<oboe::AudioStream> m_stream;
     std::mutex m_mutex;
-    mAudioBuffer* m_buffer = nullptr;
+    std::deque<int16_t> m_ring;
     bool m_paused = false;
 };
