@@ -115,6 +115,7 @@ set(SOURCE_FILES
 	ColorPicker.cpp
 	CoreManager.cpp
 	CoreController.cpp
+	DesktopLinkDialog.cpp
 	Display.cpp
 	DisplayGL.cpp
 	DisplayQt.cpp
@@ -187,6 +188,7 @@ set(UI_FILES
 	BattleChipView.ui
 	CheatsView.ui
 	DebuggerConsole.ui
+	DesktopLinkDialog.ui
 	DolphinConnector.ui
 	ForwarderView.ui
 	FrameView.ui
@@ -457,7 +459,7 @@ set_target_properties(${BINARY_NAME}-qt PROPERTIES MACOSX_BUNDLE_INFO_PLIST ${PR
 
 if(WIN32)
 	set_target_properties(${BINARY_NAME}-qt PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}")
-	target_link_libraries(${BINARY_NAME}-qt dwmapi)
+	target_link_libraries(${BINARY_NAME}-qt dwmapi ole32 uuid)
 	if(NOT MSVC)
 		target_link_libraries(${BINARY_NAME}-qt -municode)
 	endif()

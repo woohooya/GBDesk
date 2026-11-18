@@ -113,6 +113,7 @@ public slots:
 
 	void openView(QWidget* widget);
 	void showMenu(bool);
+	void createDesktopLink();
 
 #ifdef ENABLE_DEBUGGERS
 	void consoleOpen();
@@ -167,6 +168,7 @@ private slots:
 	void setLogo();
 
 	void delayedCleanup();
+	void promptSessionStart();
 
 private:
 	static const int FPS_TIMER_INTERVAL = 2000;
@@ -247,6 +249,7 @@ private:
 	QString m_pendingState;
 	bool m_pendingPause = false;
 	bool m_pendingClose = false;
+	bool m_promptSessionOnStart = false;
 
 	bool m_hitUnimplementedBiosCall;
 

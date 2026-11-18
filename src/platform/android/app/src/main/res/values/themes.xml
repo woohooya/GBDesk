@@ -1,0 +1,3 @@
+<resources>
+    <style name="Theme.GBDesk" parent="android:Theme.Material.NoActionBar" />
+</resources>

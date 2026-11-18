@@ -11,6 +11,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPainter>
+#include <QPushButton>
 #include <QScreen>
 #include <QWindow>
 
@@ -32,6 +33,7 @@
 #include "CoreController.h"
 #include "DebuggerConsole.h"
 #include "DebuggerConsoleController.h"
+#include "DesktopLinkDialog.h"
 #include "Display.h"
 #include "DolphinConnector.h"
 #include "CoreController.h"
@@ -1015,6 +1017,14 @@ void Window::gameStarted() {
 #ifdef USE_DISCORD_RPC
 	DiscordCoordinator::gameStarted(m_controller);
 #endif
+
+	if (m_promptSessionOnStart) {
+		m_promptSessionOnStart = false;
+		MultiplayerController* multiplayer = m_controller->multiplayerController();
+		if (!multiplayer || multiplayer->attached() <= 1) {
+			QTimer::singleShot(0, this, &Window::promptSessionStart);
+		}
+	}
 }
 
 void Window::gameStopped() {
@@ -1432,6 +1442,7 @@ void Window::setupMenu(QMenuBar* menubar) {
 #endif
 
 	addGameAction(tr("ROM &info..."), "romInfo", openControllerTView<ROMInfo>(), "file");
+	m_actions.addAction(tr("Create desktop &link..."), "createDesktopLink", this, &Window::createDesktopLink, "file");
 
 	m_actions.addMenu(tr("Recent"), "mru", "file");
 	m_actions.addSeparator("file");
@@ -2343,6 +2354,8 @@ void Window::setController(CoreController* controller) {
 	}
 #endif
 
+	m_promptSessionOnStart = !path.isEmpty() && m_pendingState.isEmpty() && !m_pendingPause;
+
 	attachDisplay();
 	m_controller->loadConfig(m_config);
 	m_config->updateOption("showOSD");
@@ -2428,6 +2441,76 @@ void Window::delayedCleanup() {
 	m_cleanupController.reset();
 	// The display needs to be cleaned up last so the core can clean up the OpenGL resources
 	m_cleanupDisplay.reset();
+}
+
+void Window::createDesktopLink() {
+	QString romPath;
+	QString gameName;
+	if (m_controller) {
+		QString baseDirectory = m_controller->baseDirectory();
+		QString path = m_controller->path();
+		if (!path.isEmpty()) {
+			if (baseDirectory.isEmpty()) {
+				romPath = path;
+			} else if (QFileInfo(baseDirectory).isFile()) {
+				romPath = baseDirectory;
+			} else {
+				romPath = QFileInfo(QDir(baseDirectory), path).filePath();
+			}
+			gameName = m_controller->dbTitle();
+			if (gameName.isEmpty()) {
+				gameName = QFileInfo(romPath).completeBaseName();
+			}
+		}
+	}
+	DesktopLinkDialog dialog(romPath, gameName, this);
+	dialog.exec();
+}
+
+void Window::promptSessionStart() {
+	if (!m_controller) {
+		return;
+	}
+	bool wasPaused = m_controller->isPaused();
+	if (!wasPaused) {
+		m_controller->setPaused(true);
+	}
+
+	QMessageBox msgBox(this);
+	msgBox.setWindowTitle(tr("Start Session"));
+	msgBox.setText(tr("Would you like to load from a save state or start a new session?"));
+	msgBox.setIcon(QMessageBox::Question);
+
+	QPushButton* loadSlotButton = msgBox.addButton(tr("Load Save State"), QMessageBox::ActionRole);
+	QPushButton* loadFileButton = msgBox.addButton(tr("Load State File..."), QMessageBox::ActionRole);
+	QPushButton* newSessionButton = msgBox.addButton(tr("Start New Session"), QMessageBox::AcceptRole);
+	msgBox.setDefaultButton(newSessionButton);
+
+	msgBox.exec();
+
+	if (!m_controller) {
+		return;
+	}
+
+	if (msgBox.clickedButton() == loadSlotButton) {
+		if (!wasPaused) {
+			m_controller->setPaused(false);
+		}
+		openStateWindow(LoadSave::LOAD);
+	} else if (msgBox.clickedButton() == loadFileButton) {
+		QString filter = tr("Save states (*.ss0 *.ss1 *.ss2 *.ss3 *.ss4 *.ss5 *.ss6 *.ss7 *.ss8 *.ss9 *.ss);;All files (*)");
+		QString filename = GBAApp::app()->getOpenFileName(this, tr("Select save state"), filter);
+		if (!filename.isEmpty() && m_controller) {
+			m_controller->loadState(filename);
+		}
+		if (!wasPaused && m_controller) {
+			m_controller->setPaused(false);
+		}
+	} else {
+		if (!wasPaused) {
+			m_controller->setPaused(false);
+		}
+	}
 }
 
 WindowBackground::WindowBackground(QWidget* parent)
