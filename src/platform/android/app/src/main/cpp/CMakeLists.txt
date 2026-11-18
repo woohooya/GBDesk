@@ -33,8 +33,13 @@ target_include_directories(gbdesk_jni PRIVATE
     "${CMAKE_CURRENT_BINARY_DIR}/mgba-build/include"
 )
 
+get_target_property(MGBA_DEFS mgba COMPILE_DEFINITIONS)
+if(MGBA_DEFS)
+    target_compile_definitions(gbdesk_jni PRIVATE ${MGBA_DEFS})
+endif()
+
 target_link_libraries(gbdesk_jni PRIVATE
-    mgba-static
+    mgba
     oboe::oboe
     android
     EGL
