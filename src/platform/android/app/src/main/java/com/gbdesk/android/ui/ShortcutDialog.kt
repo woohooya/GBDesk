@@ -13,8 +13,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -59,6 +63,14 @@ fun ShortcutDialog(
 
     val iconPicker = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            iconUri = uri
+        }
+    }
+
+    val fileIconPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri ->
         if (uri != null) {
             iconUri = uri
@@ -130,6 +142,15 @@ fun ShortcutDialog(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("Select Icon Image")
+                    }
+
+                    IconButton(
+                        onClick = { fileIconPicker.launch(arrayOf("image/*")) }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "Browse files for icon"
+                        )
                     }
                 }
             }
